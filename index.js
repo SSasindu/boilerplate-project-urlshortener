@@ -1,6 +1,8 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const dns = require('dns'); // Using require for consistency
+const { URL } = require('url'); // For URL parsing
 const app = express();
 
 // Basic Configuration
@@ -30,35 +32,56 @@ app.listen(port, function () {
 });
 
 app.post('/api/shorturl', (req, res) => {
-  // Access the URL from the form submission
   const url = req.body.url;
-  console.log('Submitted URL:', url);
 
   if (!url) {
-    return res.json({ error: 'invalid url' });
+    return res.json({ error: 'empty url' });
   }
 
-  const shortUrl = Math.floor(Math.random() * 99999) + 1;
-  db.push({ short_url: shortUrl, original_url: url });
-  console.log('Generated short URL ID:', shortUrl);
+  try {
+    // Parse the URL to extract hostname
+    const urlObj = new URL(url);
+    const hostname = urlObj.hostname;
 
-  res.json({
-    original_url: url,
-    short_url: shortUrl
-  });
+    // Validate the URL using DNS lookup
+    dns.lookup(hostname, (err, address) => {
+      if (err) {
+        console.log('DNS lookup failed:', err.message);
+        return res.json({ error: 'invalid url' });
+      } else {
+        console.log('Submitted URL:', url);
+        console.log('Resolved address:', address);
+
+        const shortUrl = Math.floor(Math.random() * 99999) + 1;
+        db.push({ short_url: shortUrl, original_url: url });
+        console.log('Generated short URL ID:', shortUrl);
+
+        res.json({
+          original_url: url,
+          short_url: shortUrl
+        });
+      }
+    });
+  } catch (error) {
+    // Invalid URL format
+    console.log('Invalid URL format:', error.message);
+    return res.json({ error: 'invalid url' });
+  }
 });
 
 app.get('/api/shorturl/:id', (req, res) => {
   const shortUrlId = req.params.id;
   console.log('Short URL ID requested:', shortUrlId);
 
-  const originalUrl = db.find(entry => entry.short_url == shortUrlId)?.original_url;
-  console.log('Original URL found:', originalUrl)
+  const entry = db.find(entry => entry.short_url == shortUrlId);
 
+  if (!entry) {
+    return res.json({ error: 'No short URL found for the given input' });
+  }
+
+  const originalUrl = entry.original_url;
+  console.log('Original URL found:', originalUrl);
+
+  // Redirect to the original URL
   res.redirect(originalUrl);
-
-  res.json({
-    original_url: originalUrl,
-    short_url: shortUrlId
-  });
 });
